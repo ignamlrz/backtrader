@@ -18,16 +18,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import collections
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import io
 import itertools
 
-from ..utils.py3 import (urlopen, urlquote, ProxyHandler, build_opener,
-                         install_opener)
+from ..utils.py3 import urlopen, urlquote, ProxyHandler, build_opener, install_opener
 
 import backtrader as bt
 from .. import feed
@@ -35,7 +33,7 @@ from ..utils import date2num
 
 
 class YahooFinanceCSVData(feed.CSVDataBase):
-    '''
+    """
     Parses pre-downloaded Yahoo CSV Data Feeds (or locally generated if they
     comply to the Yahoo format)
 
@@ -77,17 +75,18 @@ class YahooFinanceCSVData(feed.CSVDataBase):
         close* is now fixed. The parameter is retained, in case the need to
         swap the columns again arose.
 
-    '''
-    lines = ('adjclose',)
+    """
+
+    lines = ("adjclose",)
 
     params = (
-        ('reverse', False),
-        ('adjclose', True),
-        ('adjvolume', True),
-        ('round', True),
-        ('decimals', 2),
-        ('roundvolume', False),
-        ('swapcloses', False),
+        ("reverse", False),
+        ("adjclose", True),
+        ("adjvolume", True),
+        ("round", True),
+        ("decimals", 2),
+        ("roundvolume", False),
+        ("swapcloses", False),
     )
 
     def start(self):
@@ -111,7 +110,7 @@ class YahooFinanceCSVData(feed.CSVDataBase):
         while True:
             nullseen = False
             for tok in linetokens[1:]:
-                if tok == 'null':
+                if tok == "null":
                     nullseen = True
                     linetokens = self._getnextline()  # refetch tokens
                     if not linetokens:
@@ -126,67 +125,38 @@ class YahooFinanceCSVData(feed.CSVDataBase):
         i = itertools.count(0)
 
         dttxt = linetokens[next(i)]
-        dt = date(int(dttxt[0:4]), int(dttxt[5:7]), int(dttxt[8:10]))
-        dtnum = date2num(datetime.combine(dt, self.p.sessionend))
+        dt = datetime.fromisoformat(dttxt)
+        dtnum = date2num(dt)
 
         self.lines.datetime[0] = dtnum
-        o = float(linetokens[next(i)])
-        h = float(linetokens[next(i)])
-        l = float(linetokens[next(i)])
-        c = float(linetokens[next(i)])
-        self.lines.openinterest[0] = 0.0
+        self.lines.open[0] = float(linetokens[next(i)])
+        self.lines.high[0] = float(linetokens[next(i)])
+        self.lines.low[0] = float(linetokens[next(i)])
+        self.lines.close[0] = float(linetokens[next(i)])
 
-        # 2018-11-16 ... Adjusted Close seems to always be delivered after
-        # the close and before the volume columns
-        adjustedclose = float(linetokens[next(i)])
         try:
-            v = float(linetokens[next(i)])
+            self.lines.volume[0] = float(linetokens[next(i)])
         except:  # cover the case in which volume is "null"
-            v = 0.0
-
-        if self.p.swapcloses:  # swap closing prices if requested
-            c, adjustedclose = adjustedclose, c
-
-        adjfactor = c / adjustedclose
-
-        # in v7 "adjusted prices" seem to be given, scale back for non adj
-        if self.params.adjclose:
-            o /= adjfactor
-            h /= adjfactor
-            l /= adjfactor
-            c = adjustedclose
-            # If the price goes down, volume must go up and viceversa
-            if self.p.adjvolume:
-                v *= adjfactor
-
-        if self.p.round:
-            decimals = self.p.decimals
-            o = round(o, decimals)
-            h = round(h, decimals)
-            l = round(l, decimals)
-            c = round(c, decimals)
-
-        v = round(v, self.p.roundvolume)
-
-        self.lines.open[0] = o
-        self.lines.high[0] = h
-        self.lines.low[0] = l
-        self.lines.close[0] = c
-        self.lines.volume[0] = v
-        self.lines.adjclose[0] = adjustedclose
+            self.lines.volume[0] = 0.0
+        
+        # Open Interest index
+        oi_index = next(i)
+        if oi_index  < len(linetokens):
+            self.lines.openinterest[0] = float(linetokens[oi_index]) if linetokens[oi_index] else 0
+        else:
+            self.lines.openinterest[0] = 0
 
         return True
 
 
 class YahooLegacyCSV(YahooFinanceCSVData):
-    '''
+    """
     This is intended to load files which were downloaded before Yahoo
     discontinued the original service in May-2017
 
-    '''
-    params = (
-        ('version', ''),
-    )
+    """
+
+    params = (("version", ""),)
 
 
 class YahooFinanceCSV(feed.CSVFeedBase):
@@ -194,163 +164,110 @@ class YahooFinanceCSV(feed.CSVFeedBase):
 
 
 class YahooFinanceData(YahooFinanceCSVData):
-    '''
+    """
     Executes a direct download of data from Yahoo servers for the given time
     range.
 
     Specific parameters (or specific meaning):
 
-      - ``dataname``
+    - ``dataname``
 
         The ticker to download ('YHOO' for Yahoo own stock quotes)
 
-      - ``proxies``
+    - ``fromdate``
 
-        A dict indicating which proxy to go through for the download as in
-        {'http': 'http://myproxy.com'} or {'http': 'http://127.0.0.1:8080'}
+        Starting date for the download
 
-      - ``period``
+    - ``todate``
 
-        The timeframe to download data in. Pass 'w' for weekly and 'm' for
-        monthly.
+        Ending date for the download
 
-      - ``reverse``
+    - ``timeframe``
 
-        [2018-11-16] The latest incarnation of Yahoo online downloads returns
-        the data in the proper order. The default value of ``reverse`` for the
-        online download is therefore set to ``False``
+        Timeframe to download
 
-      - ``adjclose``
+    - ``compression``
 
-        Whether to use the dividend/split adjusted close and adjust all values
-        according to it.
+        Compression to download
+    """
 
-      - ``urlhist``
-
-        The url of the historical quotes in Yahoo Finance used to gather a
-        ``crumb`` authorization cookie for the download
-
-      - ``urldown``
-
-        The url of the actual download server
-
-      - ``retries``
-
-        Number of times (each) to try to get a ``crumb`` cookie and download
-        the data
-
-      '''
-
-    params = (
-        ('proxies', {}),
-        ('period', 'd'),
-        ('reverse', False),
-        ('urlhist', 'https://finance.yahoo.com/quote/{}/history'),
-        ('urldown', 'https://query1.finance.yahoo.com/v7/finance/download'),
-        ('retries', 3),
-    )
-
-    def start_v7(self):
+    def start_yfinance(self):
         try:
-            import requests
-        except ImportError:
-            msg = ('The new Yahoo data feed requires to have the requests '
-                   'module installed. Please use pip install requests or '
-                   'the method of your choice')
-            raise Exception(msg)
+            import yfinance as yf
+            import pandas as pd
+        except ImportError as exc:
+            msg = (
+                "The new Yahoo data feed requires to have the yfinance "
+                "module installed. Please use pip install yfinance or "
+                "the method of your choice"
+            )
+            raise ImportError(msg) from exc
 
-        self.error = None
-        url = self.p.urlhist.format(self.p.dataname)
-
-        sesskwargs = dict()
-        if self.p.proxies:
-            sesskwargs['proxies'] = self.p.proxies
-
-        crumb = None
-        sess = requests.Session()
-        sess.headers['User-Agent'] = 'backtrader'
-        for i in range(self.p.retries + 1):  # at least once
-            resp = sess.get(url, **sesskwargs)
-            if resp.status_code != requests.codes.ok:
-                continue
-
-            txt = resp.text
-            i = txt.find('CrumbStore')
-            if i == -1:
-                continue
-            i = txt.find('crumb', i)
-            if i == -1:
-                continue
-            istart = txt.find('"', i + len('crumb') + 1)
-            if istart == -1:
-                continue
-            istart += 1
-            iend = txt.find('"', istart)
-            if iend == -1:
-                continue
-
-            crumb = txt[istart:iend]
-            crumb = crumb.encode('ascii').decode('unicode-escape')
-            break
-
-        if crumb is None:
-            self.error = 'Crumb not found'
-            self.f = None
-            return
-
-        crumb = urlquote(crumb)
-
-        # urldown/ticker?period1=posix1&period2=posix2&interval=1d&events=history&crumb=crumb
-
-        # Try to download
-        urld = '{}/{}'.format(self.p.urldown, self.p.dataname)
-
-        urlargs = []
-        posix = date(1970, 1, 1)
-        if self.p.todate is not None:
-            period2 = (self.p.todate.date() - posix).total_seconds()
-            urlargs.append('period2={}'.format(int(period2)))
-
-        if self.p.todate is not None:
-            period1 = (self.p.fromdate.date() - posix).total_seconds()
-            urlargs.append('period1={}'.format(int(period1)))
-
-        intervals = {
-            bt.TimeFrame.Days: '1d',
-            bt.TimeFrame.Weeks: '1wk',
-            bt.TimeFrame.Months: '1mo',
+        # Allowed granularities by Yahoo Finance: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
+        _GRANULARITIES = {
+            (bt.TimeFrame.Minutes, 1): "1m",
+            (bt.TimeFrame.Minutes, 2): "2m",
+            (bt.TimeFrame.Minutes, 5): "5m",
+            (bt.TimeFrame.Minutes, 15): "15m",
+            (bt.TimeFrame.Minutes, 30): "30m",
+            (bt.TimeFrame.Minutes, 60): "1h",
+            (bt.TimeFrame.Minutes, 90): "90m",
+            (bt.TimeFrame.Days, 1): "1d",
+            (bt.TimeFrame.Days, 5): "5d",
+            (bt.TimeFrame.Weeks, 1): "1wk",
+            (bt.TimeFrame.Months, 1): "1mo",
+            (bt.TimeFrame.Months, 3): "3mo",
+            (bt.TimeFrame.Months, 6): "6mo",
+            (bt.TimeFrame.Years, 1): "1y",
+            (bt.TimeFrame.Years, 2): "2y",
+            (bt.TimeFrame.Years, 5): "5y",
+            (bt.TimeFrame.Years, 10): "10y",
+            (bt.TimeFrame.Years, None): "ytd",
         }
+        ticker = yf.Ticker(self.p.dataname)
+        interval = _GRANULARITIES.get((self.p.timeframe, self.p.compression))
+        # Check if the interval is supported by Yahoo Finance
+        if interval not in ticker.history_metadata["validRanges"]:
+            self.error = "Unsupported timeframe/compression combination"
+            raise ValueError("Unsupported timeframe/compression combination")
+        else:
+            self.error = None
+        # Download the data
+        history = ticker.history(start=self.p.fromdate, end=self.p.todate, interval=interval)
+        tk = ticker if ticker.history_metadata.get("instrumentType", None) != "CRYPTOCURRENCY" else yf.Ticker(ticker.ticker.split("-")[0])
+        # Create Open Interest column right to volume
+        history.insert(loc=history.columns.get_loc('Volume') + 1, column='OI', value=None)
+        if tk.options and (not self.p.todate or self.p.todate > (datetime.today() - timedelta(days=1))):
+            # Get options for each expiration
+            options = pd.DataFrame()
+            for e in tk.options:
+                opt = tk.option_chain(e)
+                calls = opt.calls
+                calls["CALL"] = True
+                puts = opt.puts
+                puts["CALL"] = False
+                opt = pd.concat([calls, puts], ignore_index=True)
+                opt["expirationDate"] = e
+                options = pd.concat([options, opt], ignore_index=True)
 
-        urlargs.append('interval={}'.format(intervals[self.p.timeframe]))
-        urlargs.append('events=history')
-        urlargs.append('crumb={}'.format(crumb))
+            # Bizarre error in yfinance that gives the wrong expiration date
+            # Add 1 day to get the correct expiration date
+            options["expirationDate"] = pd.to_datetime(options["expirationDate"]) + timedelta(days=1)
+            options["dte"] = (options["expirationDate"] - datetime.today()).dt.days / 365
 
-        urld = '{}?{}'.format(urld, '&'.join(urlargs))
-        f = None
-        for i in range(self.p.retries + 1):  # at least once
-            resp = sess.get(urld, **sesskwargs)
-            if resp.status_code != requests.codes.ok:
-                continue
+            options[["bid", "ask", "strike"]] = options[["bid", "ask", "strike"]].apply(pd.to_numeric)
+            options["mark"] = (options["bid"] + options["ask"]) / 2  # Calculate the midpoint of the bid-ask
 
-            ctype = resp.headers['Content-Type']
-            # Cover as many text types as possible for Yahoo changes
-            if not ctype.startswith('text/'):
-                self.error = 'Wrong content type: %s' % ctype
-                continue  # HTML returned? wrong url?
-
-            # buffer everything from the socket into a local buffer
-            try:
-                # r.encoding = 'UTF-8'
-                f = io.StringIO(resp.text, newline=None)
-            except Exception:
-                continue  # try again if possible
-
-            break
-
-        self.f = f
+            # Drop unnecessary and meaningless columns
+            options = options.drop(columns=["contractSize", "currency", "change", "percentChange", "lastTradeDate", "lastPrice"])
+            # Calculate the total open interest
+            oi = options['openInterest'].fillna(0).sum().item()
+            history.loc[history.index[-1], 'OI'] = oi  # Set OI value only in the last row
+        # Drop rows with missing values
+        self.f = io.StringIO(history.to_csv())
 
     def start(self):
-        self.start_v7()
+        self.start_yfinance()
 
         # Prepared a "path" file -  CSV Parser can take over
         super(YahooFinanceData, self).start()
