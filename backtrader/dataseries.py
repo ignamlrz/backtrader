@@ -22,7 +22,6 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import datetime as _datetime
-from datetime import datetime
 import inspect
 
 from .utils.py3 import range, with_metaclass
@@ -55,6 +54,27 @@ class TimeFrame(object):
     @classmethod
     def TName(cls, tframe):
         return cls.Names[tframe]
+    
+    @classmethod
+    def timedelta(cls, tframe, compression=1):
+        if tframe == cls.Ticks:
+            return _datetime.timedelta(microseconds=compression)
+        elif tframe == cls.MicroSeconds:
+            return _datetime.timedelta(microseconds=compression)
+        elif tframe == cls.Seconds:
+            return _datetime.timedelta(seconds=compression)
+        elif tframe == cls.Minutes:
+            return _datetime.timedelta(minutes=compression)
+        elif tframe == cls.Days:
+            return _datetime.timedelta(days=compression)
+        elif tframe == cls.Weeks:
+            return _datetime.timedelta(weeks=compression)
+        elif tframe == cls.Months:
+            return _datetime.timedelta(days=30 * compression)
+        elif tframe == cls.Years:
+            return _datetime.timedelta(days=365 * compression)
+        else:
+            return _datetime.timedelta(0)
 
 
 class DataSeries(LineSeries):

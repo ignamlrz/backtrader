@@ -237,7 +237,7 @@ class YahooFinanceData(YahooFinanceCSVData):
         tk = ticker if ticker.history_metadata.get("instrumentType", None) != "CRYPTOCURRENCY" else yf.Ticker(ticker.ticker.split("-")[0])
         # Create Open Interest column right to volume
         history.insert(loc=history.columns.get_loc('Volume') + 1, column='OI', value=None)
-        if tk.options and (not self.p.todate or self.p.todate > (datetime.today() - timedelta(days=1))):
+        if tk.options and (not self.p.todate or self.p.todate > (datetime.today() - bt.TimeFrame.timedelta(self.p.timeframe, self.p.compression))):
             # Get options for each expiration
             options = pd.DataFrame()
             for e in tk.options:
