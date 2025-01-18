@@ -198,6 +198,19 @@ def num2dt(num, tz=None, naive=True):
 def num2time(num, tz=None, naive=True):
     return num2date(num, tz=tz, naive=naive).time()
 
+def timestamp2date(timestamp):
+    if isinstance(timestamp, datetime.datetime):
+        return timestamp
+    elif isinstance(timestamp, int):  # Handle numeric timestamps
+        length = len(str(timestamp))
+        if length > 18:  # Nanoseconds
+            return datetime.datetime.fromtimestamp(timestamp * 10**-9)
+        elif length > 15:  # Microseconds
+            return datetime.datetime.fromtimestamp(timestamp * 10**-6)
+        elif length > 12:  # Milliseconds
+            return datetime.datetime.fromtimestamp(timestamp * 10**-3)
+        else:  # Seconds
+            return datetime.datetime.fromtimestamp(timestamp)
 
 def date2num(dt, tz=None):
     """

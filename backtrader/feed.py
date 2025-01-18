@@ -597,6 +597,8 @@ class AbstractDataBase(with_metaclass(MetaAbstractDataBase,
 
 
 class DataBase(AbstractDataBase):
+    lines: any # type for lines property
+    p: any # type for p property
     pass
 
 
