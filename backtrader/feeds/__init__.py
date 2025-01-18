@@ -31,7 +31,6 @@ from .sierrachart import *
 from .mt4csv import *
 from .pandafeed import *
 from .influxfeed import *
-from .live import *
 try:
     from .ibdata import *
 except ImportError:

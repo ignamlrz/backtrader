@@ -129,6 +129,13 @@ class GenericOhlcviLiveData(feed.DataBase):
         # Kickstart store and get queue to wait on
         self.store.start_data(data=self)
 
+        # get the contract details
+        self.contractdetails = cd = self.store.get_currency(data=self)
+        if cd is None:
+            self.put_notification(self.NOTSUBSCRIBED)
+            self.state = State.Over
+            return
+
         # check if the granularity is supported
         if self.p.timeframe == TimeFrame.Ticks or self.p.timeframe == TimeFrame.NoTimeFrame:
             self.put_notification(self.NOTSUPPORTED_TF)
@@ -137,12 +144,6 @@ class GenericOhlcviLiveData(feed.DataBase):
         self.granularity = granularity = self.store.get_granularity(data=self)
         if granularity is None:
             self.put_notification(self.NOTSUPPORTED_TF)
-            self.state = State.Over
-            return
-
-        self.contractdetails = cd = self.store.get_currency(data=self)
-        if cd is None:
-            self.put_notification(self.NOTSUBSCRIBED)
             self.state = State.Over
             return
 
@@ -168,7 +169,12 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         _last_dt0 = dtbegin
         while True:
-            _request = dict(data=self, since=_last_dt0, until=dtend, limit=self.p.limit)
+            _request = dict(
+                data=self, 
+                since=_last_dt0, 
+                until=dtend, 
+                limit=self.p.limit, 
+                interval=self.granularity)
             _data0 = self.store.fetch_ohlcvi(**_request)
             if len(_data0) == 0:
                 break
