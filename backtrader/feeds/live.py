@@ -25,6 +25,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from collections import deque
 from datetime import datetime, timedelta
 from abc import abstractmethod
+import time
 
 from .. import TimeFrame
 from .. import feed
@@ -34,7 +35,7 @@ from ..utils import date2num, num2date, timestamp2date
 class State(object):
     """State enumeration for the live data feed"""
 
-    (Init, Start, Live, Historback, Over, Conencted, Disconnected) = range(1, 6)
+    (Init, Start, Live, Historback, Over, Conencted, Disconnected) = range(1, 8)
 
     Names = ["", "Init", "Start", "Live", "Historback", "Over", "Connected", "Disconnected"]
 
@@ -55,7 +56,11 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         Params:
             Default params of DataBase plus:
-            
+
+            - ``qcheck`` (default: ``0.5``)
+
+            Delay between queries in seconds
+
             - ``limit`` (default: ``50``)
 
             The maximum number of data points to fetch in a single request.
@@ -77,7 +82,7 @@ class GenericOhlcviLiveData(feed.DataBase):
             Perform backfilling at the start. The maximum possible historical data
             will be fetched in a single request.
 
-        Store: 
+        Store:
             The store to be used to fetch the data. The store must implement the
             following methods:
 
@@ -91,6 +96,7 @@ class GenericOhlcviLiveData(feed.DataBase):
     """
 
     params = (
+        ('qcheck', 0.5),  # timeout in seconds (float) to check for events
         ("limit", 50),  # limit of data to fetch
         ("historical", False),  # do backfilling at the start
         ("backfill_start", True),  # do backfilling at the start
@@ -115,15 +121,18 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         # Create attributes as soon as possible
         self._data = deque()
+        # Ensure default qcheck is 0.5
+        self.p.qcheck = 0.5 if not self.p.qcheck else self.p.qcheck
         self.granularity = None
         self.contractdetails = None
 
     def start(self):
         """Starts the OHLCVI connecction and gets the real contract and
         contractdetails if it exists"""
+        if self.state != State.Init:
+            return
         super(GenericOhlcviLiveData, self).start()
 
-        self.state = State.Over
         self.store = self.get_store()
 
         # Kickstart store and get queue to wait on
@@ -138,27 +147,31 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         # check if the granularity is supported
         if self.p.timeframe == TimeFrame.Ticks or self.p.timeframe == TimeFrame.NoTimeFrame:
-            self.put_notification(self.NOTSUPPORTED_TF)
+            print("Timeframe not supported")
             self.state = State.Over
+            self.put_notification(self.NOTSUPPORTED_TF)
             return
         self.granularity = granularity = self.store.get_granularity(data=self)
         if granularity is None:
-            self.put_notification(self.NOTSUPPORTED_TF)
+            print("Granularity not supported")
             self.state = State.Over
+            self.put_notification(self.NOTSUPPORTED_TF)
             return
 
         self._start_finish()
 
     def _start_finish(self):
+        if self.state != State.Init:
+            return
         super(GenericOhlcviLiveData, self)._start_finish()
         self.state = State.Start
         if self.p.historical:
             self.state = State.Historback
         self.put_notification(self.DELAYED)
-        self._fetch_history()
+        self._fetch_history(fromstart=True)
         return True
 
-    def _fetch_history(self):
+    def _fetch_history(self, fromstart=False):
         dtend = datetime.now()
         if not self.p.backfill_start and self.todate < float("inf"):
             dtend = num2date(self.todate)
@@ -169,17 +182,11 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         _last_dt0 = dtbegin
         while True:
-            _request = dict(
-                data=self, 
-                since=_last_dt0, 
-                until=dtend, 
-                limit=self.p.limit, 
-                interval=self.granularity)
+            _request = dict(data=self, since=_last_dt0, until=dtend, limit=self.p.limit, interval=self.granularity)
             _data0 = self.store.fetch_ohlcvi(**_request)
             if len(_data0) == 0:
                 break
-            if _last_dt0 is None:
-                _last_dt0 = timestamp2date(_data0[0][0])
+            _last_dt0 = timestamp2date(_data0[0][0])
             _last_dt1 = timestamp2date(_data0[-1][0])
             if _last_dt0 >= dtend or _last_dt0 == _last_dt1:
                 break
@@ -187,7 +194,12 @@ class GenericOhlcviLiveData(feed.DataBase):
                 self._data.extend(_data0)
                 _last_dt0 = _last_dt1 + timedelta(milliseconds=1)
 
+        if fromstart:
+            self._data.pop()
+
     def _load(self):
+        if self.state == State.Live and self._qcheck:
+            time.sleep(self._qcheck)
         if self.state == State.Over:
             return False
 
@@ -199,20 +211,18 @@ class GenericOhlcviLiveData(feed.DataBase):
                     self.notify_live_data(self.lines[0])
                 return exists
 
-            elif self.state == State.Historback:
+            else:
                 exists = self._load_history()
-                if exists:
-                    return exists
-                else:
+                if len(self._data) == 0:
                     # End of historical data
                     if self.p.historical:  # only historical
                         self.state = State.Over
                         self.put_notification(self.DISCONNECTED)
-                        return False  # end of historical
                     else:
                         self.state = State.Live
                         self.put_notification(self.LIVE)
-                        continue
+                if exists:
+                    return exists
 
     def _load_history(self):
         try:
@@ -223,15 +233,15 @@ class GenericOhlcviLiveData(feed.DataBase):
         tstamp = timestamp2date(tstamp)
         dt = date2num(tstamp)
         if dt <= self.lines.datetime[-1]:
-            return False  # time already seen
+            return None  # time already seen
 
         self.lines.datetime[0] = dt
-        self.lines.open[0] = open_
-        self.lines.high[0] = high
-        self.lines.low[0] = low
-        self.lines.close[0] = close
-        self.lines.volume[0] = volume
-        self.lines.openinterest[0] = open_interest
+        self.lines.open[0] = float(open_)
+        self.lines.high[0] = float(high)
+        self.lines.low[0] = float(low)
+        self.lines.close[0] = float(close)
+        self.lines.volume[0] = float(volume)
+        self.lines.openinterest[0] = float(open_interest)
 
         return True
 

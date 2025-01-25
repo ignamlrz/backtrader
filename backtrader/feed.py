@@ -36,7 +36,6 @@ from backtrader.utils import tzparse
 from .dataseries import SimpleFilterWrapper
 from .resamplerfilter import Resampler, Replayer
 from .tradingcal import PandasMarketCalendar
-from .feeds.live import State, GenericOhlcviLiveData
 
 
 class MetaAbstractDataBase(dataseries.OHLCDateTime.__class__):

@@ -29,6 +29,8 @@ from ..utils.py3 import urlopen, urlquote, ProxyHandler, build_opener, install_o
 
 import backtrader as bt
 from .. import feed
+from ..feeds import live
+from ..stores.live import StoreBase
 from ..utils import date2num
 
 
@@ -281,17 +283,10 @@ class YahooFinance(feed.CSVFeedBase):
 
     params = DataCls.params._gettuple()
 
-
-class YahooLiveData(feed.GenericOhlcviLiveData):
-    def get_store(self):
-        """Returns this data as a store"""
-        return self
-    
-    def notify_live_data(self, data):
-        """Notify the live data"""
-
-    def start_data(self, data):
-        """Starts the data feed"""
+class YahooFinanceStore(StoreBase):
+    def __init__(self) -> None:
+        super(YahooFinanceStore, self).__init__()
+        self.tickers = {}
 
     def get_currency(self, data):
         """Returns the currency of the data feed"""
@@ -304,9 +299,9 @@ class YahooLiveData(feed.GenericOhlcviLiveData):
                 "the method of your choice"
             )
             raise ImportError(msg) from exc
-        if self.contractdetails is None:
-            self.contractdetails = yf.Ticker(data.p.dataname)
-        return self.contractdetails
+        if data not in self.tickers:
+            self.tickers[data] = yf.Ticker(data.p.dataname)
+        return self.tickers[data]
 
     def get_granularity(self, data):
         """Returns the granularity of the data feed"""
@@ -317,6 +312,23 @@ class YahooLiveData(feed.GenericOhlcviLiveData):
         else:
             return interval
 
-    def fetch_ohlcvi(self, data, since, until, interval):
+    def fetch_ohlcvi(self, data, since, until, limit, interval):
         """Fetches the OHLCVI data from Yahoo Finance"""
-        return self.get_currency(data).history(start=since, end=until, interval=interval)
+        result = self.get_currency(data).history(start=since, end=until, interval=interval).to_records(index=True)
+        # Convert the records timestamp to milliseconds
+        for r in result:
+            r[0] = datetime.fromtimestamp(r[0].timestamp())
+        return [(r[0], r[1], r[2], r[3], r[4], r[5], 0) for r in result]
+
+class YahooFinanceLiveData(live.GenericOhlcviLiveData):
+    def get_store(self):
+        """Returns this data as a store"""
+        return YahooFinanceStore()
+    
+    def notify_live_data(self, data):
+        """Notify the live data"""
+
+class YahooFinanceLive(feed.FeedBase):
+    """Feed of Yahoo Finance Live Data"""
+
+    DataCls = YahooFinanceLiveData

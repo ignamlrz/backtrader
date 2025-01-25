@@ -29,6 +29,9 @@ import backtrader.indicators as btind
 import backtrader.feeds as btfeeds
 import backtrader.filters as btfilters
 
+class Strategy(bt.Strategy):
+    def next(self):
+        print('Next called: {}'.format(self.data.datetime.datetime()))
 
 def runstrat():
     args = parse_args()
@@ -41,10 +44,13 @@ def runstrat():
 
     # Get the dates from the args
     fromdate = datetime.datetime.strptime(args.fromdate, '%Y-%m-%d')
-    todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
+    todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d') if args.todate else None
 
-    data = btfeeds.YahooFinanceData(
+    yahoo = btfeeds.YahooFinanceLive()
+    data = yahoo.getdata(
         dataname=args.data,
+        compression=1,
+        timeframe=bt.TimeFrame.Days,
         fromdate=fromdate,
         todate=todate)
 
@@ -72,15 +78,15 @@ def parse_args():
         description='Calendar Days Filter Sample')
 
     parser.add_argument('--data', '-d',
-                        default='YHOO',
+                        default='BTC-USD',
                         help='Ticker to download from Yahoo')
 
     parser.add_argument('--fromdate', '-f',
-                        default='2006-01-01',
+                        default=(datetime.datetime.now()-datetime.timedelta(days=365)).strftime('%Y-%m-%d'),
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--todate', '-t',
-                        default='2006-12-31',
+                        default=None,
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--period', default=15, type=int,
