@@ -4,6 +4,8 @@ from .. import stores
 
 class BitgetLiveData(live.GenericOhlcviLiveData):
 
+    plotinfo = dict(plotlog=True)
+
     def __init__(self, **kwargs):
         super(BitgetLiveData, self).__init__(**kwargs)
         self.exchange_config = kwargs.get('config', {})

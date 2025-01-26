@@ -831,6 +831,9 @@ class Plot_OldSync(with_metaclass(MetaParams, object)):
         if data.plotinfo._get('plotlog', False):
             a = axdatamaster or ax
             a.set_yscale('log')
+            from matplotlib.ticker import ScalarFormatter
+            ax.yaxis.set_major_formatter(ScalarFormatter(useMathText =True))
+            ax.yaxis.set_minor_formatter(ScalarFormatter(useMathText =True))
 
     def show(self):
         self.mpyplot.show()

@@ -25,6 +25,7 @@ import argparse
 import datetime
 
 import backtrader as bt
+import backtrader.plot.schemes as btschemes
 import backtrader.indicators as btind
 import backtrader.feeds as btfeeds
 import backtrader.filters as btfilters
@@ -49,7 +50,7 @@ def runstrat():
     bitget = btfeeds.BitgetLive()
     data = bitget.getdata(
         dataname=args.data,
-        compression=1,
+        compression=5,
         historical=True,
         timeframe=bt.TimeFrame.Minutes,
         qcheck=5,
@@ -72,7 +73,7 @@ def runstrat():
 
     # Plot if requested
     if args.plot:
-        cerebro.plot(style='candle', numfigs=args.numfigs, volume=False)
+        cerebro.plot(scheme=btschemes.TradingViewPlotScheme(), style='candle', numfigs=args.numfigs, volume=True)
 
 
 def parse_args():
@@ -85,7 +86,7 @@ def parse_args():
                         help='Ticker to download from Bitget')
 
     parser.add_argument('--fromdate', '-f',
-                        default=(datetime.datetime.now()-datetime.timedelta(hours=1)).strftime('%Y-%m-%d'),
+                        default=(datetime.datetime.now()-datetime.timedelta(days=1)).strftime('%Y-%m-%d'),
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--todate', '-t',
