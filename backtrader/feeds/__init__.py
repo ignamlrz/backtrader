@@ -52,6 +52,11 @@ try:
 except ImportError:
     pass  # The user may not have yfinance installed
 
+try:
+    from .bitget import *
+except ImportError:
+    pass  # The user may not have ccxt installed
+
 
 from .vchartfile import VChartFile
 

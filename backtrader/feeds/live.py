@@ -96,7 +96,7 @@ class GenericOhlcviLiveData(feed.DataBase):
     """
 
     params = (
-        ('qcheck', 0.5),  # timeout in seconds (float) to check for events
+        ("qcheck", 0.5),  # timeout in seconds (float) to check for events
         ("limit", 50),  # limit of data to fetch
         ("historical", False),  # do backfilling at the start
         ("backfill_start", True),  # do backfilling at the start
@@ -168,21 +168,22 @@ class GenericOhlcviLiveData(feed.DataBase):
         if self.p.historical:
             self.state = State.Historback
         self.put_notification(self.DELAYED)
-        self._fetch_history(fromstart=True)
+        self._fetch_history()
         return True
 
-    def _fetch_history(self, fromstart=False):
-        dtend = datetime.now()
+    def _fetch_history(self):
+        current_dt = self.store.fetch_server_time()
+        dtend = current_dt
         if not self.p.backfill_start and self.todate < float("inf"):
             dtend = num2date(self.todate)
 
-        dtbegin = None
-        if self.fromdate > float("-inf"):
+        dtbegin = num2date(self.lines.datetime[-1]) + timedelta(milliseconds=1) if len(self.lines) > 1 else None
+        if not dtbegin and self.fromdate > float("-inf"):
             dtbegin = num2date(self.fromdate)
 
         _last_dt0 = dtbegin
         while True:
-            _request = dict(data=self, since=_last_dt0, until=dtend, limit=self.p.limit, interval=self.granularity)
+            _request = dict(data=self, since=_last_dt0, until=dtend, limit=self.p.limit)
             _data0 = self.store.fetch_ohlcvi(**_request)
             if len(_data0) == 0:
                 break
@@ -194,8 +195,11 @@ class GenericOhlcviLiveData(feed.DataBase):
                 self._data.extend(_data0)
                 _last_dt0 = _last_dt1 + timedelta(milliseconds=1)
 
-        if fromstart:
-            self._data.pop()
+        # Remove data that is not open yet
+        if len(self._data) > 0:
+            next_dt = timestamp2date(self._data[-1][0]) + TimeFrame.timedelta(self.p.timeframe, self.p.compression)
+            if current_dt < next_dt:
+                self._data.pop()
 
     def _load(self):
         if self.state == State.Live and self._qcheck:

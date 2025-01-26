@@ -694,6 +694,21 @@ class Plot_OldSync(with_metaclass(MetaParams, object)):
             datalabel += ' (%d %s)' % (data._compression, tfname)
 
         plinevalues = getattr(data.plotinfo, 'plotlinevalues', True)
+        def zoom(event):
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+
+            zoom_factor = 0.9 if event.button == 'up' else 1.1
+
+            new_x_min = event.xdata - (event.xdata - x_min) * zoom_factor
+            new_x_max = event.xdata + (x_max - event.xdata) * zoom_factor
+            new_y_min = event.ydata - (event.ydata - y_min) * zoom_factor
+            new_y_max = event.ydata + (y_max - event.ydata) * zoom_factor
+
+            ax.set_xlim(new_x_min, new_x_max)
+            ax.set_ylim(new_y_min, new_y_max)
+            ax.figure.canvas.draw_idle()
+        ax.figure.canvas.mpl_connect('scroll_event', zoom)
         if self.pinf.sch.style.startswith('line'):
             if self.pinf.sch.linevalues and plinevalues:
                 datalabel += ' C:%.2f' % closes[-1]

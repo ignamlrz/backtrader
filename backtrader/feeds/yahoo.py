@@ -312,8 +312,9 @@ class YahooFinanceStore(StoreBase):
         else:
             return interval
 
-    def fetch_ohlcvi(self, data, since, until, limit, interval):
+    def fetch_ohlcvi(self, data, since, until, limit):
         """Fetches the OHLCVI data from Yahoo Finance"""
+        interval = self.get_granularity(data)
         result = self.get_currency(data).history(start=since, end=until, interval=interval).to_records(index=True)
         # Convert the records timestamp to milliseconds
         for r in result:

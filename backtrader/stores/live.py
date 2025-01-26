@@ -63,7 +63,7 @@ class StoreBase(with_metaclass(MetaParams, object)):
     @abstractmethod
     def fetch_server_time(self) -> datetime:
         """Server time"""
-        raise NotImplementedError
+        return datetime.now()
 
     @abstractmethod
     def fetch_acc_value(self) -> float:

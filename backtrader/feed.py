@@ -263,6 +263,10 @@ class AbstractDataBase(with_metaclass(MetaAbstractDataBase,
         # on its queue.
         qwait = self.p.qcheck if onoff else 0.0
         qwait = max(0.0, qwait - qlapse)
+        if qwait > 0:
+            current_timestamp = (datetime.datetime.now() - datetime.timedelta(seconds=qlapse)).timestamp()
+            qwait_v2 = self.p.qcheck - (current_timestamp % self.p.qcheck)
+            qwait = min(qwait, qwait_v2)
         self._qcheck = qwait
 
     def islive(self):

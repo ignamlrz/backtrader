@@ -18,8 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 # The modules below should/must define __all__ with the objects wishes
 # or prepend an "_" (underscore) to private classes/variables
@@ -36,6 +35,11 @@ except ImportError:
 
 try:
     from .oandastore import OandaStore
+except ImportError:
+    pass  # The user may not have a module installed
+
+try:
+    from .bitget import BitgetStore
 except ImportError:
     pass  # The user may not have a module installed
 
