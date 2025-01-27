@@ -193,8 +193,10 @@ class Plot_OldSync(with_metaclass(MetaParams, object)):
 
             # Create the rest on a per data basis
             dt0, dt1 = self.pinf.xreal[0], self.pinf.xreal[-1]
-            for data in strategy.datas:
+            for idx, data in enumerate(strategy.datas):
                 if not data.plotinfo.plot:
+                    continue
+                if len(strategy.plotinfo.plotdatas) != 0 and idx not in strategy.plotinfo.plotdatas:
                     continue
 
                 self.pinf.xdata = self.pinf.x
@@ -219,7 +221,7 @@ class Plot_OldSync(with_metaclass(MetaParams, object)):
                         subinds=self.dplotsover[ind],
                         upinds=self.dplotsup[ind],
                         downinds=self.dplotsdown[ind])
-
+                
                 self.plotdata(data, self.dplotsover[data])
 
                 for ind in self.dplotsdown[data]:
@@ -321,8 +323,9 @@ class Plot_OldSync(with_metaclass(MetaParams, object)):
         nrows = 0
 
         datasnoplot = 0
-        for data in strategy.datas:
-            if not data.plotinfo.plot:
+        for idx, data in enumerate(strategy.datas):
+            no_plot_by_strategy = len(strategy.plotinfo.plotdatas) != 0 and idx not in strategy.plotinfo.plotdatas
+            if not data.plotinfo.plot or no_plot_by_strategy:
                 # neither data nor indicators nor volume add rows
                 datasnoplot += 1
                 self.dplotsup.pop(data, None)

@@ -22,7 +22,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 from . import Indicator, Max, MovAv
-from . import DivZeroByZero
+from . import If
 
 
 class UpDay(Indicator):
@@ -160,9 +160,8 @@ class RelativeStrengthIndex(Indicator):
         ('movav', MovAv.Smoothed),
         ('upperband', 70.0),
         ('lowerband', 30.0),
-        ('safediv', False),
         ('safehigh', 100.0),
-        ('safelow', 50.0),
+        ('safelow', 0),
         ('lookback', 1),
     )
 
@@ -180,14 +179,8 @@ class RelativeStrengthIndex(Indicator):
         downday = DownDay(self.data, period=self.p.lookback)
         maup = self.p.movav(upday, period=self.p.period)
         madown = self.p.movav(downday, period=self.p.period)
-        if not self.p.safediv:
-            rs = maup / madown
-        else:
-            highrs = self._rscalc(self.p.safehigh)
-            lowrs = self._rscalc(self.p.safelow)
-            rs = DivZeroByZero(maup, madown, highrs, lowrs)
-
-        self.lines.rsi = 100.0 - 100.0 / (1.0 + rs)
+        # Calculate RSI like tradingview
+        self.lines.rsi = If(madown == 0, self.p.safehigh, If(maup == 0, self.p.safelow, 100 - (100 / (1 + maup / madown))))
         super(RelativeStrengthIndex, self).__init__()
 
     def _rscalc(self, rsi):
@@ -207,7 +200,6 @@ class RSI_Safe(RSI):
     See:
       - http://en.wikipedia.org/wiki/Relative_strength_index
     '''
-    params = (('safediv', True),)
 
 
 class RSI_SMA(RSI):

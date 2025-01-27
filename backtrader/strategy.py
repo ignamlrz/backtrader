@@ -117,6 +117,8 @@ class Strategy(with_metaclass(MetaStrategy, StrategyBase)):
     # keep the latest delivered data date in the line
     lines = ('datetime',)
 
+    plotinfo = dict(plotdatas=[]) # Empty array mean all datas
+
     def qbuffer(self, savemem=0, replaying=False):
         '''Enable the memory saving schemes. Possible values for ``savemem``:
 
