@@ -367,6 +367,9 @@ class AbstractDataBase(with_metaclass(MetaAbstractDataBase,
                 if lalias != 'datetime':
                     setattr(self, 'tick_' + lalias,
                             getattr(self.lines, lalias)[0])
+                else:
+                    setattr(self, 'tick_' + lalias,
+                            num2date(getattr(self.lines, lalias)[0]))
 
             self.tick_last = getattr(self.lines, alias0)[0]
 

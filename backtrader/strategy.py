@@ -593,6 +593,8 @@ class Strategy(with_metaclass(MetaStrategy, StrategyBase)):
             for analyzer in itertools.chain(self.analyzers,
                                             self._slave_analyzers):
                 analyzer._notify_order(order)
+            for observer in self._lineiterators[LineIterator.ObsType]:
+                observer.notify_order(order)
 
         for trade in proctrades:
             self.notify_trade(trade)

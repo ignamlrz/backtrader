@@ -4,6 +4,8 @@ from .. import stores
 
 class BitgetLiveData(live.GenericOhlcviLiveData):
 
+    params = dict(limit=200)
+    
     plotinfo = dict(plotlog=True)
 
     def __init__(self, **kwargs):

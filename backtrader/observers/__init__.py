@@ -32,3 +32,4 @@ from .timereturn import *
 from .benchmark import *
 
 from .logreturns import *
+from .orders import *

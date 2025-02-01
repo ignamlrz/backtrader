@@ -66,3 +66,7 @@ class Observer(with_metaclass(MetaObserver, ObserverBase)):
 
     def start(self):
         pass
+
+    def notify_order(self, order):
+        '''Receives order notifications before each next cycle'''
+        pass

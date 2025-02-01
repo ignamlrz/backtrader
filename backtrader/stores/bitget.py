@@ -87,6 +87,10 @@ class BitgetStore(StoreBase):
         """Fetches the OHLCVI data from Bitget exchange"""
         symbol = self.get_currency(data)["id"]
         timeframe = self.get_granularity(data)
-        result = self.exchange.fetch_ohlcv(symbol=symbol, timeframe=timeframe, since=int(since.timestamp() * 10**3), limit=limit)
+        # request_params = dict(paginate=True, maxEntriesPerRequest=limit, paginationCalls=50, paginationDirection="forward")
+        request_params = dict(until=self.exchange.parse8601(str(until)), useHistoryEndpoint=True)
+        request = dict(since=self.exchange.parse8601(str(since)), params=request_params)
+        result = self.exchange.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit, **request)
         # currently openinterest is not calculated, so add new item with value 0
-        return [(timestamp, o, h, l, c, v, 0) for timestamp, o, h, l, c, v in result]
+        result = [(timestamp, o, h, l, c, v, 0) for timestamp, o, h, l, c, v in result]
+        return sorted(result, key=lambda x: x[0])

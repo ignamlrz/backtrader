@@ -1040,17 +1040,20 @@ class BackBroker(bt.BrokerBase):
     def _try_exec(self, order):
         data = order.data
 
+        ticks = bt.TimeFrame.timedelta(data.p.timeframe, data.p.compression)
         popen = getattr(data, 'tick_open', None)
-        if popen is None:
+        # Order currently created on this candle, and we are on replay data
+        replaying_allow_entry = (data.replaying and order.created.dt == bt.date2num(data.datetime.datetime(0)-ticks))
+        if popen is None or replaying_allow_entry:
             popen = data.open[0]
         phigh = getattr(data, 'tick_high', None)
-        if phigh is None:
+        if phigh is None or replaying_allow_entry:
             phigh = data.high[0]
         plow = getattr(data, 'tick_low', None)
-        if plow is None:
+        if plow is None or replaying_allow_entry:
             plow = data.low[0]
         pclose = getattr(data, 'tick_close', None)
-        if pclose is None:
+        if pclose is None or replaying_allow_entry:
             pclose = data.close[0]
 
         pcreated = order.created.price

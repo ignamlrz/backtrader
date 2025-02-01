@@ -549,9 +549,6 @@ class Resampler(_BaseResampler):
                 if not onedge and self.doadjusttime:
                     self._adjusttime(greater=True, forcedata=forcedata)
 
-                _temp0 = num2date(self.bar.datetime)
-                _temp1 = _temp0.timestamp() - (_temp0.timestamp() % TimeFrame.timedelta(self.p.timeframe, self.p.compression).seconds)
-                self.bar.datetime = date2num(datetime.fromtimestamp(_temp1))
                 data._add2stack(self.bar.lvalues())
                 self.bar.bstart(maxdate=True)  # bar delivered -> restart
 

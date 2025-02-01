@@ -23,7 +23,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import timezone
 from abc import abstractmethod
 import time
 
@@ -172,28 +172,30 @@ class GenericOhlcviLiveData(feed.DataBase):
         return True
 
     def _fetch_history(self):
-        current_dt = self.store.fetch_server_time()
-        dtend = current_dt
-        if not self.p.backfill_start and self.todate < float("inf"):
+        dtend = current_dt = self.store.fetch_server_time()
+        if self.p.backfill_start and self.todate < float("inf"):
             dtend = num2date(self.todate)
 
-        dtbegin = num2date(self.lines.datetime[-1]) + timedelta(milliseconds=1) if len(self.lines) > 1 else None
+        dtbegin = num2date(self.lines.datetime[-1]) if len(self.lines) > 1 else None
         if not dtbegin and self.fromdate > float("-inf"):
             dtbegin = num2date(self.fromdate)
 
+        dtbegin = dtbegin.astimezone(tz=timezone.utc)
+        dtend = dtend.astimezone(tz=timezone.utc)
         _last_dt0 = dtbegin
         while True:
-            _request = dict(data=self, since=_last_dt0, until=dtend, limit=self.p.limit)
-            _data0 = self.store.fetch_ohlcvi(**_request)
-            if len(_data0) == 0:
+            _last_dt1 = _last_dt0 + (TimeFrame.timedelta(self.p.timeframe, self.p.compression) * (self.p.limit - 2))
+            _request = dict(data=self, since=_last_dt0, until=_last_dt1, limit=self.p.limit)
+            _datares = self.store.fetch_ohlcvi(**_request)
+            if len(_datares) == 0:
                 break
-            _last_dt0 = timestamp2date(_data0[0][0])
-            _last_dt1 = timestamp2date(_data0[-1][0])
+            _last_dt0 = timestamp2date(_datares[0][0]).astimezone(tz=timezone.utc)
+            _last_dt1 = timestamp2date(_datares[-1][0]).astimezone(tz=timezone.utc)
             if _last_dt0 >= dtend or _last_dt0 == _last_dt1:
                 break
             else:
-                self._data.extend(_data0)
-                _last_dt0 = _last_dt1 + timedelta(milliseconds=1)
+                self._data.extend(_datares)
+                _last_dt0 = _last_dt1
 
         # Remove data that is not open yet
         if len(self._data) > 0:
