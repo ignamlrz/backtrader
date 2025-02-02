@@ -12,6 +12,8 @@ class BitgetLiveData(live.GenericOhlcviLiveData):
         super(BitgetLiveData, self).__init__(**kwargs)
         self.exchange_config = kwargs.get('config', {})
         self.store = None
+        currency = self.get_store().get_currency(self)
+        self.p.dataname = currency["symbol"]
 
     def get_store(self):
         """Returns this data as a store"""

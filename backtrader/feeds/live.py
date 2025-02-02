@@ -23,13 +23,26 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from collections import deque
-from datetime import timezone
+from datetime import timezone, datetime, timedelta
 from abc import abstractmethod
 import time
+import os
+import pandas as pd
+import numpy as np
 
 from .. import TimeFrame
 from .. import feed
 from ..utils import date2num, num2date, timestamp2date
+
+import platform
+
+# Define la ruta basada en la plataforma
+if platform.system().lower() == "windows":
+    DEFAULT_CSV_PATH = "C:/opt/backtrader"
+elif platform.system().lower() in ["linux", "darwin"]:  # Darwin es para macOS
+    DEFAULT_CSV_PATH = "/opt/backtrader"
+else:
+    raise EnvironmentError(f"Unsupported platform: {platform.system().lower()}")
 
 
 class State(object):
@@ -82,6 +95,16 @@ class GenericOhlcviLiveData(feed.DataBase):
             Perform backfilling at the start. The maximum possible historical data
             will be fetched in a single request.
 
+            - ``csv`` (default: ``False``)
+
+            Specify if save/load into/from a CSV the fetched data, stored by months. Only apply if historical
+            data is enabled too
+
+            - ``csv_basepath`` (default: None)
+
+            Specify where to save/load the csv data. If not is specified a folder name data will be on
+            C:/opt/backtrader or /opt/backtrader, depending on the platform
+
         Store:
             The store to be used to fetch the data. The store must implement the
             following methods:
@@ -100,6 +123,8 @@ class GenericOhlcviLiveData(feed.DataBase):
         ("limit", 50),  # limit of data to fetch
         ("historical", False),  # do backfilling at the start
         ("backfill_start", True),  # do backfilling at the start
+        ("csv", False),  # Specify if save into a CSV the fetched data. Store by months
+        ("csv_basepath", None),
     )
 
     state = State.Init
@@ -125,6 +150,7 @@ class GenericOhlcviLiveData(feed.DataBase):
         self.p.qcheck = 0.5 if not self.p.qcheck else self.p.qcheck
         self.granularity = None
         self.contractdetails = None
+        self._csv_filepath = None
 
     def start(self):
         """Starts the OHLCVI connecction and gets the real contract and
@@ -158,6 +184,12 @@ class GenericOhlcviLiveData(feed.DataBase):
             self.put_notification(self.NOTSUPPORTED_TF)
             return
 
+        if self.p.historical and self.p.csv:
+            root_filepath = self.p.csv_basepath if self.p.csv_basepath else DEFAULT_CSV_PATH
+            class_name = type(self).__name__
+            symbol_name = self.p.dataname.replace(":", "_").replace("/", "-") # Sanitize
+            self._csv_filepath = os.path.join(root_filepath, class_name, symbol_name, granularity)
+
         self._start_finish()
 
     def _start_finish(self):
@@ -182,11 +214,21 @@ class GenericOhlcviLiveData(feed.DataBase):
 
         dtbegin = dtbegin.astimezone(tz=timezone.utc)
         dtend = dtend.astimezone(tz=timezone.utc)
-        _last_dt0 = dtbegin
+        _last_dt0 = dtbegin - timedelta(milliseconds=1)
         while True:
             _last_dt1 = _last_dt0 + (TimeFrame.timedelta(self.p.timeframe, self.p.compression) * (self.p.limit - 2))
-            _request = dict(data=self, since=_last_dt0, until=_last_dt1, limit=self.p.limit)
-            _datares = self.store.fetch_ohlcvi(**_request)
+            _last_dt0 = _last_dt0 + timedelta(milliseconds=1) # avoid repeat previous _last_dt1 data
+            _data_csv0, _path0 = self._exists_data_csv(fromdate=_last_dt0, endate=dtend)
+            if _data_csv0:
+                # Read data from csv
+                _datares = _data_csv0
+            elif _path0:
+                # Not exists, but allowed to download all month data to csv
+                self._download_into_csv(_last_dt0, _path0)
+                _datares = self._read_from_csv(fromdate=_last_dt0, endate=dtend, path=_path0)
+            else:
+                _request = dict(data=self, since=_last_dt0, until=_last_dt1, limit=self.p.limit)
+                _datares = self.store.fetch_ohlcvi(**_request)
             if len(_datares) == 0:
                 break
             _last_dt0 = timestamp2date(_datares[0][0]).astimezone(tz=timezone.utc)
@@ -250,6 +292,67 @@ class GenericOhlcviLiveData(feed.DataBase):
         self.lines.openinterest[0] = float(open_interest)
 
         return True
+
+    def _exists_data_csv(self, fromdate, endate):
+        if not self._csv_filepath:
+            return False, None
+        target_date = str(fromdate.date())[:-3]
+        current_date = str(datetime.today().date())[:-3]
+        if target_date == current_date:
+            return False, None
+        path = os.path.join(self._csv_filepath, target_date + ".csv")
+        if not os.path.exists(path=path):
+            return False, path # Specify that should be loaded
+        result = self._read_from_csv(fromdate=fromdate, endate=endate, path=path)
+        if not result:
+            return False, None
+        return result, path
+
+    def _download_into_csv(self, fromdate, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dtbegin = datetime.combine(fromdate.date().replace(day=1), datetime.min.time())
+        dtbegin = dtbegin.replace(tzinfo=timezone.utc)
+        dtend = datetime.combine((dtbegin + timedelta(days=datetime.max.day + 1)).replace(day=1), datetime.min.time())
+        dtend = dtend.replace(tzinfo=timezone.utc)
+        result = deque()
+        _last_dt0 = dtbegin - timedelta(milliseconds=1)
+        _timedelta = TimeFrame.timedelta(self.p.timeframe, self.p.compression)
+        while True:
+            _next_timedelta = _timedelta * (self.p.limit - 2)
+            _last_dt1 = min(_last_dt0 + _next_timedelta, dtend)
+            _request = dict(data=self, since=_last_dt0 + timedelta(milliseconds=1), until=_last_dt1, limit=self.p.limit)
+            _datares = self.store.fetch_ohlcvi(**_request)
+            if len(_datares) == 0:
+                break
+            _last_dt0 = timestamp2date(_datares[0][0]).astimezone(tz=timezone.utc)
+            _last_dt1 = timestamp2date(_datares[-1][0]).astimezone(tz=timezone.utc)
+            if _last_dt0 >= dtend or _last_dt0 == _last_dt1:
+                break
+            else:
+                result.extend(_datares)
+                _last_dt0 = _last_dt1
+        # Convert deque to DataFrame and save
+        columns = ["datetime", "open", "high", "low", "close", "volume", "openinterest"]
+        df = pd.DataFrame(list(result), columns=columns)
+        df["datetime"] = pd.to_datetime(df["datetime"], unit="ms")
+        df.to_csv(path, index=False)
+
+    def _read_from_csv(self, fromdate, endate, path):
+        df = pd.read_csv(path, parse_dates=["datetime"])
+        if not fromdate:
+            fromdate = np.datetime64(df.iloc[0]["datetime"])
+        if not endate:
+            endate = np.datetime64(df.iloc[-1]["datetime"])
+        fromdate = pd.to_datetime(fromdate).tz_convert(timezone.utc)
+        endate = pd.to_datetime(endate).tz_convert(timezone.utc)
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(timezone.utc)
+        filtered_df = df[(df["datetime"] >= fromdate) & (df["datetime"] <= endate)]
+        filtered_df.set_index("datetime", inplace=True)
+        result = filtered_df.to_records(index=True)
+        # Convert the records timestamp to milliseconds
+        for r in result:
+            r[0] = r[0].value
+        return [(r[0], float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[6])) for r in result]
 
     def haslivedata(self):
         return bool(self.state == State.Live and self._data)

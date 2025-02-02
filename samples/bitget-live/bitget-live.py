@@ -30,14 +30,13 @@ import backtrader.indicators as btind
 import backtrader.feeds as btfeeds
 import backtrader.filters as btfilters
 
-
 class Strategy(bt.Strategy):
     def __init__(self):
         self.rsi = btind.RelativeStrengthIndex()
         self.clength = 0
         self.tcounter = 0
         self.order = None
-    
+
     def notify_order(self, order):
         if order.status in [bt.Order.Completed] and order.parent:
             self.order = None
@@ -54,8 +53,8 @@ class Strategy(bt.Strategy):
                 price = self.data.close[-1]
                 diff = self.data.high[-1] - self.data.low[-1]
                 print(
-                    "[{}] Buy called: Open {}, Close {}, RSI {}".format(
-                        self.data.datetime.datetime(), self.data.open[-1], self.data.close[-1], prev_rsi
+                    "[{}] Buy called: Open {}, Close {}, RSI {}_{}".format(
+                        self.data.datetime.datetime(), self.data.open[-1], self.data.close[-1], prev_rsi, rsi
                     )
                 )
                 self.order = self.buy_bracket(
@@ -82,7 +81,7 @@ def runstrat():
     cerebro = bt.Cerebro(stdstats=False)
 
     # Add a strategy
-    cerebro.addstrategy(Strategy)
+    cerebro.addstrategy(bt.Strategy)
     cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
     cerebro.addobserver(bt.observers.Orders)
     cerebro.addobserver(bt.observers.BuySell)
@@ -95,15 +94,44 @@ def runstrat():
     todate = datetime.datetime.strptime(args.todate, "%Y-%m-%d") if args.todate else None
 
     bitget = btfeeds.BitgetLive()
-    data = bitget.getdata(
-        dataname=args.data, compression=5, historical=True, timeframe=bt.TimeFrame.Minutes, qcheck=5, fromdate=fromdate, todate=todate
-    )
+    futures_config = {
+        "options": {
+            "defaultType": "swap",
+            "marginMode": "isolated",
+        },
+        "enableRateLimit": True,
+    }
+    for a in ["DOGEUSDT", "LINKUSDT"]:
+        data = bitget.getdata(
+            dataname=a,
+            compression=1,
+            historical=True,
+            csv=True,
+            timeframe=bt.TimeFrame.Minutes,
+            qcheck=5,
+            fromdate=fromdate,
+            todate=todate,
+            config=futures_config if args.futures else {}
+        )
 
-    # Add the resample data instead of the original
-    cerebro.replaydata(dataname=data, timeframe=bt.TimeFrame.Minutes, compression=15, boundoff=1, rightedge=False)
+        cerebro.adddata(data)
+    # data = bitget.getdata(
+    #     dataname=args.data,
+    #     compression=1,
+    #     historical=True,
+    #     csv=True,
+    #     timeframe=bt.TimeFrame.Minutes,
+    #     qcheck=5,
+    #     fromdate=fromdate,
+    #     todate=todate,
+    #     config=futures_config if args.futures else {}
+    # )
+
+    # # Add the resample data instead of the original
+    # cerebro.replaydata(dataname=data, timeframe=bt.TimeFrame.Minutes, compression=15, boundoff=1, rightedge=False)
 
     # Add a simple moving average if requested
-    cerebro.addindicator(btind.SMA, period=args.period)
+    # cerebro.addindicator(btind.SMA, period=args.period)
 
     # Add a writer with CSV
     if args.writer:
@@ -114,7 +142,7 @@ def runstrat():
 
     # Plot if requested
     if args.plot:
-        cerebro.plot(scheme=btschemes.TradingViewPlotScheme(), style="candle", numfigs=args.numfigs, volume=True)
+        cerebro.plot(scheme=btschemes.TradingViewPlotScheme(), style="candle", numfigs=args.numfigs, volume=False)
 
 
 def parse_args():
@@ -136,6 +164,10 @@ def parse_args():
     parser.add_argument("--writer", "-w", action="store_true", help="Add a writer to cerebro")
 
     parser.add_argument("--wrcsv", "-wc", action="store_true", help="Enable CSV Output in the writer")
+
+    parser.add_argument("--csv", action="store_true", help="Specify if store the fetched data into CSV")
+
+    parser.add_argument("--futures", action="store_true", help="Specify if use futures chart")
 
     parser.add_argument("--plot", "-p", action="store_true", help="Plot the read data")
 
